@@ -1,107 +1,177 @@
-let pushTime = 200;
-let skipLoopCount = 6;
+// animation time
+let pushTime = 400;
+
+let minMaxPushRatio = [0.08, 0.16];
 
 let lineDensity = 0.3;
 let strokeDensity = 0.3;
+let strokeThickness = 6;
+let randomStrokeThickness = [2, 4];
+let strokeLength = 12;
 
-let _testCanvas;
+let constantStrokeRotation = false;
+let strokeRotation = 0;
+
 
 let _mainCanvas;
 let _compositeCanvas;
+let _animCanvas;
 
 let _nowDrawCanvas;
 let _tempPushCanvas;
 
 let mainHue = 0;
-let fromColor;
-let toColor;
+let shapeColor = [];
+let fromColor = [];
+let toColor = [];
 
 // for animation
-let nowDrawRectData = [];
+let mainRemainSpace = [];
 let compositeRectData = [];
+let nowDrawRectData = [];
 
 async function setup() {
   createCanvas(windowWidth, windowHeight);
-  background(240);
   colorMode(HSB);
-  _testCanvas = createGraphics(width, height);
+  frameRate(50);
 
   _mainCanvas = createGraphics(width, height);
   _compositeCanvas = createGraphics(width, height);
+  _animCanvas = createGraphics(width, height);
   _tempPushCanvas = createGraphics(width, height);
   _nowDrawCanvas = createGraphics(width, height);
   _mainCanvas.colorMode(HSB);
+  _mainCanvas.blendMode(MULTIPLY);
   _compositeCanvas.colorMode(HSB);
+  _compositeCanvas.blendMode(MULTIPLY);
   _tempPushCanvas.colorMode(HSB);
+
   _nowDrawCanvas.colorMode(HSB);
   _nowDrawCanvas.blendMode(MULTIPLY);
 
+  if (random() < 0.7) {
+    constantStrokeRotation = true;
+
+    if (random() < 0.5)
+      strokeRotation = int(random(0, 8)) * 45;
+    else
+      strokeRotation = random(0, 360);
+  }
+
+
   mainHue = random(0, 360);
 
-  let mainRemainSpace = [0, 0, width, height];
+  mainRemainSpace = [0, 0, width, height];
   compositeRectData = mainRemainSpace;
 
   while (true) {
 
-    let drawRemainSpace = mainRemainSpace;
-    drawRemainSpace[0] = 0; // cuz it is relative to composite canvas
+    let drawRemainSpace = [];
+    drawRemainSpace[0] = 0;
     drawRemainSpace[1] = 0;
+    drawRemainSpace[2] = mainRemainSpace[2];
+    drawRemainSpace[3] = mainRemainSpace[3];
 
+    _compositeCanvas.resizeCanvas(mainRemainSpace[2], mainRemainSpace[3]);
+
+    // inside layer
     while (true) {
+      nowDrawRectData[0] = drawRemainSpace[0] + mainRemainSpace[0];
+      nowDrawRectData[1] = drawRemainSpace[1] + mainRemainSpace[1];
       await drawShape(drawRemainSpace[2], drawRemainSpace[3]);
-      console.log(_nowDrawCanvas.width, _nowDrawCanvas.height);
       let pushData = await PushRect(_nowDrawCanvas, drawRemainSpace[2], drawRemainSpace[3]);
+
+      let fromData = [
+        drawRemainSpace[0] + mainRemainSpace[0],
+        drawRemainSpace[1] + mainRemainSpace[1],
+        drawRemainSpace[2],
+        drawRemainSpace[3]
+      ];
+
+      let toData = [
+        pushData.drawSpace[0] + drawRemainSpace[0] + mainRemainSpace[0],
+        pushData.drawSpace[1] + drawRemainSpace[1] + mainRemainSpace[1],
+        pushData.drawSpace[2],
+        pushData.drawSpace[3]
+      ];
+
+      await DrawPushAnimation(fromData, toData);
 
       let drawX = drawRemainSpace[0] + pushData.drawSpace[0];
       let drawY = drawRemainSpace[1] + pushData.drawSpace[1];
       let drawW = pushData.drawSpace[2];
       let drawH = pushData.drawSpace[3];
+
+      _animCanvas.clear();
       _compositeCanvas.image(_tempPushCanvas, drawX, drawY, drawW, drawH);
-      // console.log(pushData);
 
       drawRemainSpace[0] += pushData.remainSpace[0];
       drawRemainSpace[1] += pushData.remainSpace[1];
       drawRemainSpace[2] = pushData.remainSpace[2];
       drawRemainSpace[3] = pushData.remainSpace[3];
-      console.log(drawRemainSpace);
 
-      fill('red');
-      rect(drawRemainSpace[0], drawRemainSpace[1], drawRemainSpace[2], drawRemainSpace[3]);
-
-      // console.log(drawRemainSpace);
-      // if(drawRemainSpace[2] <= 0 || drawRemainSpace[3] <= 0)
-      // {
-      //   console.log("Draw First Composite Finish");
-      //   break;
-      // }
-      await sleep(100);
+      if (drawRemainSpace[2] <= 0 || drawRemainSpace[3] <= 0) {
+        // console.log("Layer Draw Finish");
+        break;
+      }
+      await sleep(30);
     }
 
-    // mainRemainSpace = await compositePush(mainRemainSpace[0], mainRemainSpace[1], mainRemainSpace[2], mainRemainSpace[3]);
-    // console.log("Composite push finish");
-    // console.log(mainRemainSpace);
+    // outside layer
+    let compositePushData = await PushRect(_compositeCanvas, mainRemainSpace[2], mainRemainSpace[3]);
 
-    // compositeRectData[0] = mainRemainSpace[0];
-    // compositeRectData[1] = mainRemainSpace[1];
-    // compositeRectData[2] = mainRemainSpace[2];
-    // compositeRectData[3] = mainRemainSpace[3];
+    let fromData = [
+      mainRemainSpace[0],
+      mainRemainSpace[1],
+      mainRemainSpace[2],
+      mainRemainSpace[3]
+    ];
 
-    // console.log(compositeRectData);
-    // _compositeCanvas.resizeCanvas(mainRemainSpace[2], mainRemainSpace[3]);
+    let toData = [
+      compositePushData.drawSpace[0] + mainRemainSpace[0],
+      compositePushData.drawSpace[1] + mainRemainSpace[1],
+      compositePushData.drawSpace[2],
+      compositePushData.drawSpace[3]
+    ];
+
+    _compositeCanvas.clear();
+    await DrawPushAnimation(fromData, toData);
+
+    let compositeDrawX = mainRemainSpace[0] + compositePushData.drawSpace[0];
+    let compositeDrawY = mainRemainSpace[1] + compositePushData.drawSpace[1];
+    let compositeDrawW = compositePushData.drawSpace[2];
+    let compositeDrawH = compositePushData.drawSpace[3];
+    _animCanvas.clear();
+    _mainCanvas.image(_tempPushCanvas, compositeDrawX, compositeDrawY, compositeDrawW, compositeDrawH);
+
+    mainRemainSpace[0] += compositePushData.remainSpace[0];
+    mainRemainSpace[1] += compositePushData.remainSpace[1];
+    mainRemainSpace[2] = compositePushData.remainSpace[2];
+    mainRemainSpace[3] = compositePushData.remainSpace[3];
+
+    if (mainRemainSpace[2] <= 0 || mainRemainSpace[3] <= 0) {
+      // console.log("All Finish");
+      break;
+    }
   }
 }
 
 // will return the final draw position
-async function PushRect (_fromCanvas, _w, _h)
-{
+async function PushRect(_fromCanvas, _w, _h) {
   _tempPushCanvas.resizeCanvas(_w, _h);
 
+  if (_w <= 0 || _h <= 0) {
+    return {
+      drawSpace: [0, 0, 0, 0],
+      remainSpace: [0, 0, 0, 0]
+    };
+  }
   // copy content to temp canvas
   _tempPushCanvas.image(_fromCanvas, 0, 0); // the size should be same as fromCanvas
 
   // some random push size
   let pushDir = int(random(0, 4));
-  let pushEndRatio = random(0.04, 0.12);
+  let pushEndRatio = random(minMaxPushRatio[0], minMaxPushRatio[1]);
   let pushEndLength = min(width, height) * pushEndRatio;
 
   // no push
@@ -184,61 +254,65 @@ async function PushRect (_fromCanvas, _w, _h)
 
   targetDrawSpace = [toX, toY, toW, toH];
 
-  // let pushFrames = int(pushTime / 33);
-
-  // for (let i = 0; i <= pushFrames; i++) {
-  //   let t = easeInOutCubic(i / pushFrames);
-  //   let nowX = lerp(fromX, toX, t);
-  //   let nowY = lerp(fromY, toY, t);
-  //   let nowW = lerp(fromW, toW, t);
-  //   let nowH = lerp(fromH, toH, t);
-
-  //   nowDrawRectData = [nowX, nowY, nowW, nowH];
-
-  //   _tempPushCanvas.clear();
-  //   _tempPushCanvas.image(_nowDrawCanvas, nowX, nowY, nowW, nowH);
-
-  //   updateFrame();
-  //   await sleep(33);
-  // }
-
-  // _compositeCanvas.image(_nowDrawCanvas, toX, toY, toW, toH);
-
-  // return remain space
   return {
     drawSpace: targetDrawSpace,
     remainSpace: remainSpace
   };
 }
 
+async function DrawPushAnimation(_fromData, _toData) {
+  let frames = pushTime / 1000 * frameRate();
+  let waitTime = 1000 / frameRate();
+
+  for (let i = 0; i <= frames; i++) {
+    let t = easeInCubic(i / frames);
+    let nowX = lerp(_fromData[0], _toData[0], t);
+    let nowY = lerp(_fromData[1], _toData[1], t);
+    let nowW = lerp(_fromData[2], _toData[2], t);
+    let nowH = lerp(_fromData[3], _toData[3], t);
+
+    _animCanvas.clear();
+    _animCanvas.image(_tempPushCanvas, nowX, nowY, nowW, nowH);
+    await sleep(waitTime);
+  }
+
+}
+
 async function drawShape(_w, _h) {
+
+  // random color offset
+  let hueOffset = 0;
+
+  let hueOffsetRandom = random();
+  if (hueOffsetRandom < 0.08)
+    hueOffset = 180;
+  else if (hueOffsetRandom < 0.16)
+    hueOffset = 60;
+  else if (hueOffsetRandom < 0.24)
+    hueOffset = -60;
+
+  // for animation
+  nowDrawRectData[2] = _w;
+  nowDrawRectData[3] = _h;
 
   _nowDrawCanvas.resizeCanvas(_w, _h);
   _nowDrawCanvas.clear();
-  
+
   let edgeThickness = min(_w, _h) * random(0.1, 0.3);
 
-  // simple test with simple rect
-  let nowColor = NYRandomColor(mainHue);
-  _nowDrawCanvas.fill(nowColor[0], nowColor[1], nowColor[2]);
-  _nowDrawCanvas.noStroke();
-  _nowDrawCanvas.rect(0, 0, _w, edgeThickness);
-  _nowDrawCanvas.rect(0, 0, edgeThickness, _h);
-  _nowDrawCanvas.rect(0 + _w - edgeThickness, 0, edgeThickness, _h);
-  _nowDrawCanvas.rect(0, 0 + _h - edgeThickness, _w, edgeThickness);
-  return;
-  fromColor = NYRandomColor(mainHue);
-  toColor = NYSlightRandomColor(fromColor);
-  await NYRect(_x, _y, _w, _h, edgeThickness);
+  shapeColor = NYRandomColor(mainHue + hueOffset);
+  fromColor = NYSlightRandomColor(shapeColor);
+  toColor = NYSlightRandomColor(shapeColor);
+  await NYRect(0, 0, _w, _h, edgeThickness);
 
-  let insideX = _x + edgeThickness;
-  let insideY = _y + edgeThickness;
+  let insideX = 0 + edgeThickness;
+  let insideY = 0 + edgeThickness;
   let insideW = _w - edgeThickness * 2;
   let insideH = _h - edgeThickness * 2;
 
   let circleCount = int(random(1, 13));
   let circleRadius = min(insideW, insideH) * 0.5;
-  let circleThickness = min(insideW, insideH) * random(0.025, 0.2);
+  let circleThickness = min(insideW, insideH) * random(0.06, 0.24);
 
   if (insideW > insideH) {
     let circleSpaceWidth = insideW / circleCount;
@@ -247,10 +321,10 @@ async function drawShape(_w, _h) {
       let nowX = insideX + (i + 0.5) * circleSpaceWidth;
       let nowY = insideY + insideH * 0.5;
 
-      fromColor = NYRandomColor(mainHue);
-      toColor = NYSlightRandomColor(fromColor);
+      shapeColor = NYRandomColor(mainHue + hueOffset);
+      fromColor = NYSlightRandomColor(shapeColor);
+      toColor = NYSlightRandomColor(shapeColor);
       await NYCircle(nowX, nowY, circleRadius, circleThickness);
-      sleep(1);
     }
   }
   else {
@@ -260,10 +334,10 @@ async function drawShape(_w, _h) {
       let nowX = insideX + insideW * 0.5;
       let nowY = insideY + (i + 0.5) * circleSpaceHeight;
 
-      fromColor = NYRandomColor(mainHue);
-      toColor = NYSlightRandomColor(fromColor);
+      shapeColor = NYRandomColor(mainHue + hueOffset);
+      fromColor = NYSlightRandomColor(shapeColor);
+      toColor = NYSlightRandomColor(shapeColor);
       await NYCircle(nowX, nowY, circleRadius, circleThickness);
-      sleep(1);
     }
   }
 }
@@ -275,24 +349,23 @@ async function NYCircle(_x, _y, _r, _thickness) {
 
   for (let i = 0; i < layerCount; i++) {
     let t = i / layerCount;
-    let nowColor = NYLerpColorData(fromColor, toColor, t);
-    _nowDrawCanvas.stroke(nowColor[0], nowColor[1], nowColor[2]);
+    let drawColor = NYLerpColorData(fromColor, toColor, t);
 
     let nowR = _r - i * layerOffset;
 
+    _nowDrawCanvas.noFill();
+    _nowDrawCanvas.stroke(drawColor[0], drawColor[1], drawColor[2]);
+    _nowDrawCanvas.strokeWeight(strokeThickness);
     NYCircleLayer(_x, _y, nowR);
+    await sleep(1);
 
-    if (i % skipLoopCount == 0)
-      await sleep(1);
-    updateFrame();
+    updateDrawFrame();
   }
 }
 
 async function NYCircleLayer(_x, _y, _r) {
   let circleLength = 2 * PI * _r;
   let drawCount = int(circleLength * strokeDensity);
-
-  let lineLength = 8;
 
   for (let i = 0; i < drawCount; i++) {
     let t = i / drawCount;
@@ -301,17 +374,19 @@ async function NYCircleLayer(_x, _y, _r) {
     let nowX = _x + sin(radians(nowDegree)) * _r;
     let nowY = _y - cos(radians(nowDegree)) * _r;
 
-    _nowDrawCanvas.strokeWeight(random(1, 4));
+    _nowDrawCanvas.strokeWeight(random(randomStrokeThickness[0], randomStrokeThickness[1]));
 
-    let rotNoise = noise(nowX * 0.002, nowY * 0.002);
+    let rotNoise = noise(nowX * 0.001, nowY * 0.001);
     let nowRot = rotNoise * 720;
+
+    if (constantStrokeRotation)
+      nowRot = strokeRotation;
 
     _nowDrawCanvas.push();
     _nowDrawCanvas.translate(nowX, nowY);
     _nowDrawCanvas.rotate(radians(nowRot));
-    _nowDrawCanvas.line(0, -0.5 * lineLength, 0, 0.5 * lineLength);
+    _nowDrawCanvas.line(0, -0.5 * strokeLength, 0, 0.5 * strokeLength);
     _nowDrawCanvas.pop();
-
   }
 }
 
@@ -323,33 +398,38 @@ async function NYRect(_x, _y, _w, _h, _thickness) {
   for (let i = 0; i < layerCount; i++) {
     let t = i / layerCount;
     let nowColor = NYLerpColorData(fromColor, toColor, t);
+
+    let x1 = _x + i * layerOffset + 0.5 * strokeThickness;
+    let y1 = _y + i * layerOffset + + 0.5 * strokeThickness;
+
+    let x2 = _x + _w - i * layerOffset - 0.5 * strokeThickness;
+    let y2 = _y + i * layerOffset + 0.5 * strokeThickness;
+
+    let x3 = _x + _w - i * layerOffset - 0.5 * strokeThickness;
+    let y3 = _y + _h - i * layerOffset - 0.5 * strokeThickness;
+
+    let x4 = _x + i * layerOffset + 0.5 * strokeThickness;
+    let y4 = _y + _h - i * layerOffset - 0.5 * strokeThickness;
+
+    _nowDrawCanvas.noFill();
     _nowDrawCanvas.stroke(nowColor[0], nowColor[1], nowColor[2]);
+    _nowDrawCanvas.strokeWeight(strokeThickness);
+    // _nowDrawCanvas.line(x1, y1, x2, y2);
+    // _nowDrawCanvas.line(x2, y2, x3, y3);
+    // _nowDrawCanvas.line(x3, y3, x4, y4);
+    // _nowDrawCanvas.line(x4, y4, x1, y1);
 
-    let x1 = _x + i * layerOffset;
-    let y1 = _y + i * layerOffset;
-
-    let x2 = _x + _w - i * layerOffset;
-    let y2 = _y + i * layerOffset;
-
-    let x3 = _x + _w - i * layerOffset;
-    let y3 = _y + _h - i * layerOffset;
-
-    let x4 = _x + i * layerOffset;
-    let y4 = _y + _h - i * layerOffset;
     NYLine(x1, y1, x2, y2);
     NYLine(x2, y2, x3, y3);
     NYLine(x3, y3, x4, y4);
     NYLine(x4, y4, x1, y1);
+    await sleep(1);
 
-    if (i % skipLoopCount == 0)
-      await sleep(1);
-
-    updateFrame();
+    updateDrawFrame();
   }
 }
 
 async function NYLine(_x1, _y1, _x2, _y2) {
-  let lineLength = 8;
   let drawDistance = dist(_x1, _y1, _x2, _y2);
   let drawCount = int(drawDistance * strokeDensity);
 
@@ -358,22 +438,25 @@ async function NYLine(_x1, _y1, _x2, _y2) {
     let nowX = lerp(_x1, _x2, t);
     let nowY = lerp(_y1, _y2, t);
 
-    _nowDrawCanvas.strokeWeight(random(1, 4));
+    _nowDrawCanvas.strokeWeight(random(randomStrokeThickness[0], randomStrokeThickness[1]));
 
-    let rotNoise = noise(nowX * 0.002, nowY * 0.002);
+    let rotNoise = noise(nowX * 0.001, nowY * 0.001);
     let nowRot = rotNoise * 720;
+
+    if (constantStrokeRotation)
+      nowRot = strokeRotation;
 
     _nowDrawCanvas.push();
     _nowDrawCanvas.translate(nowX, nowY);
     _nowDrawCanvas.rotate(radians(nowRot));
-    _nowDrawCanvas.line(0, -0.5 * lineLength, 0, 0.5 * lineLength);
+    _nowDrawCanvas.line(0, -0.5 * strokeLength, 0, 0.5 * strokeLength);
     _nowDrawCanvas.pop();
   }
 }
 
 function NYRandomColor(_mainHue) {
-  let drawHue = _mainHue + random(-40, 40);
-  let drawSat = random(40, 60);
+  let drawHue = _mainHue + random(-30, 30);
+  let drawSat = random(30, 50);
   let drawBri = random(80, 100);
 
   drawHue = processHue(drawHue);
@@ -382,44 +465,33 @@ function NYRandomColor(_mainHue) {
 }
 
 function NYSlightRandomColor(_colorData) {
-  let drawHue = _colorData[0] + random(-12, 12);
-  let drawSat = _colorData[1] + random(-20, 20);
-  let drawBri = _colorData[2] + random(-20, 20);
+  let drawHue = _colorData[0] + random(-6, 6);
+  let drawSat = _colorData[1] + random(-10, 10);
+  let drawBri = _colorData[2] + random(-10, 10);
 
   drawHue = processHue(drawHue);
 
   return [drawHue, drawSat, drawBri];
 }
 
-function updateFrame() {
-  background(255);
-  image(_mainCanvas, 0, 0);
-  image(_compositeCanvas, compositeRectData[0], compositeRectData[1], compositeRectData[2], compositeRectData[3]);
-  image(_tempPushCanvas, 0, 0);
-  image(_nowDrawCanvas, nowDrawRectData[0], nowDrawRectData[1], nowDrawRectData[2], nowDrawRectData[3]);
+function updateDrawFrame() {
+
+  let drawX = nowDrawRectData[0];
+  let drawY = nowDrawRectData[1];
+  let drawW = nowDrawRectData[2];
+  let drawH = nowDrawRectData[3];
+
+  _animCanvas.image(_nowDrawCanvas, drawX, drawY, drawW, drawH);
 }
 
 async function draw() {
 
-  stroke('red');
-  strokeWeight(2);
-  fill(30);
-  rect(0, 0, 200, 200);
-  image(_compositeCanvas, 0, 0, 200, 200);
-  
-  // _testCanvas.clear();
-  // _testCanvas.image(_mainCanvas, 0, 0);
-  // _testCanvas.image(_compositeCanvas, compositeRectData[0], compositeRectData[1], compositeRectData[2], compositeRectData[3]);
-  // image(_testCanvas, 0, 0, 200, 200);
+  background(248);
+  image(_mainCanvas, 0, 0);
+  image(_compositeCanvas, mainRemainSpace[0], mainRemainSpace[1]);
+  image(_animCanvas, 0, 0);
 }
 
-function keyPressed (e)
-{
-  if(e.key == 'q')
-  {
-    console.log(compositeRectData);
-  }
-}
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
